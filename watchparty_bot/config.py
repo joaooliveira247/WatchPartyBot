@@ -1,9 +1,11 @@
-
 from dynaconf import Dynaconf
 
 settings = Dynaconf(
     envvar_prefix="DYNACONF",
-    settings_files=['settings.json', '.secrets.json'],
+    settings_files=[
+        "./watchparty_bot/settings.json",
+        "./watchparty_bot/.secrets.json",
+    ],
 )
 
 # `envvar_prefix` = export envvars with `export DYNACONF_FOO=bar`.
