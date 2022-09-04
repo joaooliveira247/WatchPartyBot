@@ -1,4 +1,4 @@
-from .src. discord_bot import DiscordBot
+from .src.discord_bot import bot
 from typer import Typer, Option
 from typing import Optional
 import json
@@ -6,9 +6,8 @@ from .config import settings
 
 main = Typer()
 
-@main.command()
+@main.command(name="init")
 def init(token: Optional[str] = None) -> Typer:
-    client = DiscordBot()
     if token:
         with open(
             "./watchparty_bot/.secrets.json", "w",encoding="utf-8"
@@ -17,5 +16,6 @@ def init(token: Optional[str] = None) -> Typer:
                 {"token": token},
                 secret,
                 )
-    client.run(settings.token)
+
+    bot.run(settings.token)
 
