@@ -115,7 +115,33 @@ async def poll(command, movies: str) -> Thread:
     embed_winner.description = "Win with {} votes.".format(str(winner[1]))
 
     await message.channel.send(embed=embed_winner)
-    #TODO: close thread.
+    # TODO: close thread.
+
+
+@bot.slash_command(name="suggestion", description="make a movie suggestion.")
+async def suggestion(command, movie: str) -> Message:
+
+    # TODO: check if bot send message in movie channel.
+
+    film: dict[str, str] | list[dict[str, str]] = wrapper.movie_wrapper(
+        normalize("NFD", movie).encode("ascii", "ignore").decode("utf8")
+    )
+
+    embed_movie: Embed = Embed()
+    embed_movie.color = Colour.yellow()
+    embed_movie.title = "\u2139\uFE0F - {}: {}".format(
+        film["type"].title(), film["title"]
+    )
+    embed_movie.set_thumbnail(url=film["poster"])
+    embed_movie.description = film["description"]
+    embed_movie.set_footer(
+        text="Genres: {}\nDate: {}\nRating: {}/10 \U0001f31f".format(
+            " | ".join(film["genres"]), film["created_at"], film["rating"]
+        )
+    )
+
+    await command.channel.send(embed=embed_movie)
+
 
 @bot.slash_command(
     name="clear", description="Clear 100 messages in Movie text chat."
