@@ -1,6 +1,4 @@
-from requests import post, Response
-from pprint import pprint
-from requests import HTTPError
+from requests import post, Response, HTTPError
 
 # TODO: make this function recursive
 def movie_wrapper(
@@ -25,7 +23,7 @@ def movie_wrapper(
             genres: list[str] = [
                 genre.replace("#", "") for genre in response["genres"]
             ]
-            genres = [x + " | " for x in genres]
+            # genres = [x + " | " for x in genres]
             movie_cleaned: dict[str, str] = {
                 "title": response["jsonnnob"]["name"],
                 "type": response["jsonnnob"]["@type"],
