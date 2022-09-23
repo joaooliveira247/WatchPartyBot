@@ -1,7 +1,14 @@
 from watchparty_bot.src import wrapper
 from watchparty_bot.src.utils import Utils
 from disnake.ext import commands
-from disnake import Embed, ChannelType, Thread, Message, TextChannel, Colour
+from disnake import (
+    Embed,
+    ChannelType,
+    Thread,
+    Message,
+    TextChannel,
+    Colour,
+)
 from asyncio import sleep
 from unicodedata import normalize
 from requests import HTTPError
@@ -16,20 +23,22 @@ async def on_ready():
 
 
 @bot.slash_command(name="poll", description="Make an poll.")
-async def poll(command, movies: str) -> Thread:
+async def poll(command, movies: str, poll_time: int) -> Thread:
     if (
         "movie" not in command.channel.name.lower()
         and command.channel.type != "text"
     ):
         return await command.response.send_message(
-            "Looks like you're on the wrong channel."
+            "Looks like you're on the wrong channel.",
+            delete_after=10.0
         )
 
     movies: list[str] = movies.split(",")
     movies: list[str] = [movie.replace(":", "") for movie in movies]
 
     await command.response.send_message(
-        f"Starting a poll with: {', '.join(movies).title()}"
+        f"Starting a poll with: {', '.join(movies).title()}",
+        delete_after=10.0
     )
 
     thread: Thread = await command.channel.create_thread(
@@ -79,8 +88,8 @@ async def poll(command, movies: str) -> Thread:
     message: Message = await thread.send("Voting ...")
     for i in range(len(movies)):
         await message.add_reaction(numbers[i + 1])
-    await sleep(15)
-    # TODO: Make an for to get each emoji (parameters of reactions is a string of emoji.)
+    await sleep(float(poll_time))
+
     reactions: list[str] = []
 
     reactions_info: list[dict[str, str | int]] = []
@@ -106,7 +115,7 @@ async def poll(command, movies: str) -> Thread:
 
                 reactions_info.append(reaction_stats)
 
-    winner: tuple[str, int] = Utils.frequentily(reactions)[0]
+    winner: tuple[str, int] = Utils.frequently(reactions)[0]
 
     embed_winner: Embed = bot.get_message(
         thread_messages[int(winner[0].replace("\uFE0F\u20E3", "")) - 1]
@@ -115,13 +124,27 @@ async def poll(command, movies: str) -> Thread:
     embed_winner.description = "Win with {} votes.".format(str(winner[1]))
 
     await message.channel.send(embed=embed_winner)
-    # TODO: close thread.
+
+    await message.channel.edit(
+        name=f"\U0001f6ab Locked | {thread.name}", locked=True, archived=True
+    )
 
 
 @bot.slash_command(name="suggestion", description="make a movie suggestion.")
 async def suggestion(command, movie: str) -> Message:
 
-    # TODO: check if bot send message in movie channel.
+    if (
+        "movie" not in command.channel.name.lower()
+        and command.channel.type != "text"
+    ):
+        return await command.response.send_message(
+            "Looks like you're on the wrong channel.",
+            delete_after=10.0
+        )
+
+    await command.response.send_message(
+        "Sending your suggestion.", delete_after=10.0
+    )
 
     film: dict[str, str] | list[dict[str, str]] = wrapper.movie_wrapper(
         normalize("NFD", movie).encode("ascii", "ignore").decode("utf8")
@@ -135,8 +158,14 @@ async def suggestion(command, movie: str) -> Message:
     embed_movie.set_thumbnail(url=film["poster"])
     embed_movie.description = film["description"]
     embed_movie.set_footer(
-        text="Genres: {}\nDate: {}\nRating: {}/10 \U0001f31f".format(
-            " | ".join(film["genres"]), film["created_at"], film["rating"]
+        text=(
+            "Genres: {}\nDate: {}\nRating: {}/10 \U0001f31f"
+            "\nSuggested by: {}"
+        ).format(
+            " | ".join(film["genres"]),
+            film["created_at"],
+            film["rating"],
+            command.user.name,
         )
     )
 
@@ -166,6 +195,17 @@ async def clear(command) -> TextChannel:
     await command.channel.send("This channel has {} messages.".format(count))
     await command.channel.send(command.channel.type)
 
-    sleep(15)
+    await sleep(10.0)
 
     await command.channel.purge()
+
+
+@bot.slash_command(name="lock", description="Lock a channel")
+async def lock(command, channel: TextChannel = None):
+    channel = channel or command.channel
+    overwrite = channel.overwrites_for(command.guild.default_role)
+    overwrite.send_messages = False
+    await channel.set_permissions(
+        command.guild.default_role, overwrite=overwrite
+    )
+    await command.send("Channel locked.")
