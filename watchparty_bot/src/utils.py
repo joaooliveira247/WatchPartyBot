@@ -1,10 +1,6 @@
-from typing import Iterator
+from collections import Counter
 
 class Utils:
     @staticmethod
-    def bigger(nums: Iterator[int]) -> int:
-        nums = sorted(nums)
-
-        match nums:
-            case 
-            
+    def frequently(freq: list[str],) -> tuple[str, int]:
+        return Counter(freq).most_common(1)
