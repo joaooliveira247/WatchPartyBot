@@ -6,13 +6,13 @@ from disnake import (
     ChannelType,
     Thread,
     Message,
-    TextChannel,
     Colour,
 )
 from asyncio import sleep
 from unicodedata import normalize
 from requests import HTTPError
 
+DELETE_AFTER: float = 10.0
 
 bot: commands.Bot = commands.Bot()
 
@@ -22,6 +22,7 @@ async def on_ready():
     print(f"We have logged in as {bot.user} \U0001f4a1")
 
 
+@commands.cooldown(rate=1, per=480, type=commands.BucketType.user)
 @bot.slash_command(name="poll", description="Make an poll.")
 async def poll(command, movies: str, poll_time: int) -> Thread:
     if (
@@ -30,15 +31,26 @@ async def poll(command, movies: str, poll_time: int) -> Thread:
     ):
         return await command.response.send_message(
             "Looks like you're on the wrong channel.",
-            delete_after=10.0
+            delete_after=DELETE_AFTER,
         )
 
     movies: list[str] = movies.split(",")
     movies: list[str] = [movie.replace(":", "") for movie in movies]
 
+    match movies:
+        case _ if len(movies) <= 1:
+            return await command.response.send_message(
+                "Too few arguments.", delete_after=DELETE_AFTER
+            )
+
+        case _ if len(movies) > 5:
+            return await command.response.send_message(
+                "Too many arguments.", delete_after=DELETE_AFTER
+            )
+
     await command.response.send_message(
         f"Starting a poll with: {', '.join(movies).title()}",
-        delete_after=10.0
+        delete_after=DELETE_AFTER,
     )
 
     thread: Thread = await command.channel.create_thread(
@@ -47,7 +59,6 @@ async def poll(command, movies: str, poll_time: int) -> Thread:
         type=ChannelType.public_thread,
     )
 
-    # TODO: make only poll with 5 options.
     numbers: dict[int, str] = {
         1: "1\uFE0F\u20E3",
         2: "2\uFE0F\u20E3",
@@ -68,7 +79,9 @@ async def poll(command, movies: str, poll_time: int) -> Thread:
                 .decode("utf8")
             )
         except HTTPError:
-            return await command.channel.send("Movie not found.")
+            await thread.send(f"Movie {movie[1]} not found.")
+            await sleep(DELETE_AFTER)
+            return await thread.delete()
         embed_movie: Embed = Embed()
         embed_movie.color = Colour.blurple()
         embed_movie.title = "{} - {}: {}".format(
@@ -77,8 +90,10 @@ async def poll(command, movies: str, poll_time: int) -> Thread:
         embed_movie.set_thumbnail(url=film["poster"])
         embed_movie.description = film["description"]
         embed_movie.set_footer(
-            text="Genres: {}\nDate: {}\nRating: {}/10 \U0001f31f".format(
-                " | ".join(film["genres"]), film["created_at"], film["rating"]
+            text=("Genres: {}\nDate: {}\nRating: {}/10 \U0001f31f").format(
+                " | ".join(film["genres"]),
+                film["created_at"],
+                film["rating"],
             )
         )
 
@@ -126,10 +141,25 @@ async def poll(command, movies: str, poll_time: int) -> Thread:
     await message.channel.send(embed=embed_winner)
 
     await message.channel.edit(
-        name=f"\U0001f6ab Locked | {thread.name}", locked=True, archived=True
+        name=f"\U0001f6ab Locked | {thread.name}",
+        locked=True,
+        archived=True,
     )
 
 
+@poll.error
+async def pool_cooldown_error(
+    ctx, error: commands.errors.CommandOnCooldown
+) -> Message:
+    if isinstance(error, commands.errors.CommandOnCooldown):
+        await ctx.response.send_message(
+            f"Command on cooldown, "
+            f"{Utils.seconds_to_minutes(error.retry_after)} minutes remaning.",
+            delete_after=DELETE_AFTER,
+        )
+
+
+@commands.cooldown(rate=1, per=60, type=commands.BucketType.user)
 @bot.slash_command(name="suggestion", description="make a movie suggestion.")
 async def suggestion(command, movie: str) -> Message:
 
@@ -139,16 +169,21 @@ async def suggestion(command, movie: str) -> Message:
     ):
         return await command.response.send_message(
             "Looks like you're on the wrong channel.",
-            delete_after=10.0
+            delete_after=DELETE_AFTER,
         )
 
     await command.response.send_message(
-        "Sending your suggestion.", delete_after=10.0
+        "Sending your suggestion.", delete_after=DELETE_AFTER
     )
 
-    film: dict[str, str] | list[dict[str, str]] = wrapper.movie_wrapper(
-        normalize("NFD", movie).encode("ascii", "ignore").decode("utf8")
-    )
+    try:
+        film: dict[str, str] = wrapper.movie_wrapper(
+            normalize("NFD", movie).encode("ascii", "ignore").decode("utf8")
+        )
+    except HTTPError:
+        return await command.channel.send(
+            f"{movie} not found.", delete_after=DELETE_AFTER
+        )
 
     embed_movie: Embed = Embed()
     embed_movie.color = Colour.yellow()
@@ -172,40 +207,13 @@ async def suggestion(command, movie: str) -> Message:
     await command.channel.send(embed=embed_movie)
 
 
-@bot.slash_command(
-    name="clear", description="Clear 100 messages in Movie text chat."
-)
-async def clear(command) -> TextChannel:
-    if (
-        "movie" not in command.channel.name.lower()
-        and command.channel.type != "text"
-    ):
-        return await command.response.send_message(
-            "Looks like you're on the wrong channel."
+@suggestion.error
+async def suggestion_cooldown_error(
+    ctx, error: commands.errors.CommandOnCooldown
+) -> Message:
+    if isinstance(error, commands.errors.CommandOnCooldown):
+        await ctx.response.send_message(
+            f"Command on cooldown, "
+            f"{Utils.seconds_to_minutes(error.retry_after)} minutes remaning.",
+            delete_after=DELETE_AFTER,
         )
-
-    await command.response.send_message(
-        "This process may take a while and will only delete 100 messages."
-    )
-    count: int = 0
-
-    async for _ in command.channel.history(limit=None):
-        count += 1
-
-    await command.channel.send("This channel has {} messages.".format(count))
-    await command.channel.send(command.channel.type)
-
-    await sleep(10.0)
-
-    await command.channel.purge()
-
-
-@bot.slash_command(name="lock", description="Lock a channel")
-async def lock(command, channel: TextChannel = None):
-    channel = channel or command.channel
-    overwrite = channel.overwrites_for(command.guild.default_role)
-    overwrite.send_messages = False
-    await channel.set_permissions(
-        command.guild.default_role, overwrite=overwrite
-    )
-    await command.send("Channel locked.")
