@@ -24,6 +24,66 @@ bot: commands.Bot = commands.Bot(command_prefix=commands.when_mentioned)
 async def on_ready():
     print(f"We have logged in as {bot.user} \U0001f4a1")
 
+
+@commands.cooldown(rate=2, per=480)
+@bot.slash_command(name="ticket")
+async def ticket(command: ApplicationCommandInteraction) -> None:
+    ...
+
+
+@ticket.sub_command("get")
+async def get_ticket(command: ApplicationCommandInteraction) -> Role:
+    for role in command.user.roles:
+        if "Viewer" not in role.name:
+            await command.response.send_message(
+                "received ticket 🎬  |  Viewer", delete_after=DELETE_AFTER
+            )
+            return await command.author.add_roles(
+                utils.get(command.guild.roles, name="🎬  |  Viewer")
+            )
+
+    await command.response.send_message(
+        "You already have a ticket.", delete_after=DELETE_AFTER
+    )
+
+
+@ticket.sub_command("drop")
+async def drop_ticket(command: ApplicationCommandInteraction) -> Message:
+    await command.response.send_message(
+                "droped ticket 🎬  |  Viewer", delete_after=DELETE_AFTER
+            )
+    return await command.author.remove_roles(
+        utils.get(command.guild.roles, name="🎬  |  Viewer")
+    )
+
+
+@ticket.error
+async def ticket_cooldown_error(
+    ctx: ApplicationCommandInteraction,
+    error: commands.errors.CommandOnCooldown,
+) -> Message:
+    if isinstance(error, commands.errors.CommandOnCooldown):
+        await ctx.response.send_message(
+            f"Command on cooldown, "
+            f"{Utils.seconds_to_minutes(error.retry_after)} minutes remaning.",
+            delete_after=DELETE_AFTER,
+        )
+
+
+    @staticmethod
+    def clean_phrase(phrase: str | list[str]) -> str | list[str]:
+        if isinstance(phrase, str):
+            return (
+                normalize("NFD", phrase)
+                .encode("ascii", "ignore")
+                .decode("utf-8")
+            )
+        cleaned_phrases = []
+        for word in phrase:
+            cleaned_phrases.append(Utils.clean_phrase(word))
+
+        return cleaned_phrases
+
 @commands.cooldown(rate=3, per=480, type=commands.BucketType.user)
 @bot.slash_command(name="poll", description="Make an poll.")
 async def poll(
