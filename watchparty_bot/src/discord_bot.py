@@ -1,4 +1,4 @@
-from watchparty_bot.src import wrapper
+from watchparty_bot.src.wrapper import movie_wrapper
 from watchparty_bot.src.utils import Utils
 from disnake.ext import commands
 from disnake import (
@@ -7,6 +7,9 @@ from disnake import (
     Thread,
     Message,
     Colour,
+    ApplicationCommandInteraction,
+    utils,
+    Role
 )
 from asyncio import sleep
 from unicodedata import normalize
@@ -14,17 +17,24 @@ from requests import HTTPError
 
 DELETE_AFTER: float = 10.0
 
-bot: commands.Bot = commands.Bot()
+bot: commands.Bot = commands.Bot(command_prefix=commands.when_mentioned)
 
 
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user} \U0001f4a1")
 
-
-@commands.cooldown(rate=1, per=480, type=commands.BucketType.user)
+@commands.cooldown(rate=3, per=480, type=commands.BucketType.user)
 @bot.slash_command(name="poll", description="Make an poll.")
-async def poll(command, movies: str, poll_time: int) -> Thread:
+async def poll(
+    command: ApplicationCommandInteraction,
+    movies: str = commands.Param(
+        name="movies", description="Insert movies titles. Ex: The 100, Dahmer"
+        ),
+    poll_time: commands.Range[10, 300] = commands.Param(
+        name="poll_time", description="Insert a number between 10 and 300."
+    ),
+) -> Thread:
     if (
         "movie" not in command.channel.name.lower()
         and command.channel.type != "text"
@@ -34,7 +44,7 @@ async def poll(command, movies: str, poll_time: int) -> Thread:
             delete_after=DELETE_AFTER,
         )
 
-    movies: list[str] = movies.split(",")
+    movies: list[str] = movies.split(", ")
     movies: list[str] = [movie.replace(":", "") for movie in movies]
 
     match movies:
@@ -69,31 +79,33 @@ async def poll(command, movies: str, poll_time: int) -> Thread:
 
     thread_messages: list[int] = []
 
+    try:
+
+        films: dict[str, str] | list[dict[str, str]] = movie_wrapper(
+            Utils.clean_phrase(movies)
+        )
+
+    except HTTPError:
+        await thread.send(f"Movie not found.")
+        await sleep(DELETE_AFTER)
+        return await thread.delete()
+
     for movie in enumerate(movies, start=1):
-        try:
-            film: dict[str, str] | list[
-                dict[str, str]
-            ] = wrapper.movie_wrapper(
-                normalize("NFD", movie[1])
-                .encode("ascii", "ignore")
-                .decode("utf8")
-            )
-        except HTTPError:
-            await thread.send(f"Movie {movie[1]} not found.")
-            await sleep(DELETE_AFTER)
-            return await thread.delete()
         embed_movie: Embed = Embed()
         embed_movie.color = Colour.blurple()
         embed_movie.title = "{} - {}: {}".format(
-            numbers[movie[0]], film["type"].title(), film["title"]
+            numbers[movie[0]],
+            films[movie[0] - 1]["type"].title(),
+            films[movie[0] - 1]["title"],
         )
-        embed_movie.set_thumbnail(url=film["poster"])
-        embed_movie.description = film["description"]
+        embed_movie.set_thumbnail(url=films[movie[0] - 1]["poster"])
+        embed_movie.description = films[movie[0] - 1]["description"]
+        embed_movie.url = films[movie[0] - 1]["imdb_url"]
         embed_movie.set_footer(
-            text=("Genres: {}\nDate: {}\nRating: {}/10 \U0001f31f").format(
-                " | ".join(film["genres"]),
-                film["created_at"],
-                film["rating"],
+            text=("Genres: {}\nYear: {}\nRating: {}/10 \U0001f31f").format(
+                " | ".join(films[movie[0] - 1]["genres"]),
+                films[movie[0] - 1]["created_at"],
+                films[movie[0] - 1]["rating"],
             )
         )
 
@@ -149,7 +161,8 @@ async def poll(command, movies: str, poll_time: int) -> Thread:
 
 @poll.error
 async def pool_cooldown_error(
-    ctx, error: commands.errors.CommandOnCooldown
+    ctx: ApplicationCommandInteraction,
+    error: commands.errors.CommandOnCooldown,
 ) -> Message:
     if isinstance(error, commands.errors.CommandOnCooldown):
         await ctx.response.send_message(
@@ -159,7 +172,7 @@ async def pool_cooldown_error(
         )
 
 
-@commands.cooldown(rate=1, per=60, type=commands.BucketType.user)
+@commands.cooldown(rate=2, per=60, type=commands.BucketType.user)
 @bot.slash_command(name="suggestion", description="make a movie suggestion.")
 async def suggestion(command, movie: str) -> Message:
 
@@ -209,7 +222,8 @@ async def suggestion(command, movie: str) -> Message:
 
 @suggestion.error
 async def suggestion_cooldown_error(
-    ctx, error: commands.errors.CommandOnCooldown
+    ctx: ApplicationCommandInteraction,
+    error: commands.errors.CommandOnCooldown,
 ) -> Message:
     if isinstance(error, commands.errors.CommandOnCooldown):
         await ctx.response.send_message(
@@ -217,3 +231,4 @@ async def suggestion_cooldown_error(
             f"{Utils.seconds_to_minutes(error.retry_after)} minutes remaning.",
             delete_after=DELETE_AFTER,
         )
+
