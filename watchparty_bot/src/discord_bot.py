@@ -9,11 +9,16 @@ from disnake import (
     Colour,
     ApplicationCommandInteraction,
     utils,
-    Role
+    Role,
+    GuildScheduledEvent,
+    GuildScheduledEventEntityType,
+    abc,
+    Guild,
 )
 from asyncio import sleep
 from unicodedata import normalize
 from requests import HTTPError
+from datetime import datetime, timedelta
 
 DELETE_AFTER: float = 10.0
 
@@ -31,7 +36,7 @@ async def ticket(command: ApplicationCommandInteraction) -> None:
     ...
 
 
-@ticket.sub_command("get")
+@ticket.sub_command("get", description="Get a tickert.")
 async def get_ticket(command: ApplicationCommandInteraction) -> Role:
     for role in command.user.roles:
         if "Viewer" not in role.name:
@@ -47,11 +52,11 @@ async def get_ticket(command: ApplicationCommandInteraction) -> Role:
     )
 
 
-@ticket.sub_command("drop")
+@ticket.sub_command("drop", description="Drop your ticket.")
 async def drop_ticket(command: ApplicationCommandInteraction) -> Message:
     await command.response.send_message(
-                "droped ticket 🎬  |  Viewer", delete_after=DELETE_AFTER
-            )
+        "droped ticket 🎬  |  Viewer", delete_after=DELETE_AFTER
+    )
     return await command.author.remove_roles(
         utils.get(command.guild.roles, name="🎬  |  Viewer")
     )
@@ -70,19 +75,32 @@ async def ticket_cooldown_error(
         )
 
 
-    @staticmethod
-    def clean_phrase(phrase: str | list[str]) -> str | list[str]:
-        if isinstance(phrase, str):
-            return (
-                normalize("NFD", phrase)
-                .encode("ascii", "ignore")
-                .decode("utf-8")
-            )
-        cleaned_phrases = []
-        for word in phrase:
-            cleaned_phrases.append(Utils.clean_phrase(word))
+@commands.cooldown(rate=3, per=1200)
+@bot.slash_command(name="invite", description="Make an invite.")
+async def invite(
+    command: ApplicationCommandInteraction,
+    channel: abc.GuildChannel = commands.Param(
+        name="channel", description="channel where the event will start."
+    ),
+    role: Role = commands.Param(
+        name="role", description="Role to be mentioned."
+    ),
+    time: commands.Range[1, 300] = commands.Param(
+        name="time", description="Time in minutes to start an event."
+    ),
+) -> GuildScheduledEvent:
+    event_create: GuildScheduledEvent = (
+        await command.guild.create_scheduled_event(
+            name=f"{channel.name}",
+            scheduled_start_time=Utils.add_time(time),
+            entity_type=GuildScheduledEventEntityType.voice,
+            channel=channel,
+        )
+    )
+    await command.response.send_message(event_create.url)
 
-        return cleaned_phrases
+    await command.channel.send(role.mention)
+
 
 @commands.cooldown(rate=3, per=480, type=commands.BucketType.user)
 @bot.slash_command(name="poll", description="Make an poll.")
@@ -90,7 +108,7 @@ async def poll(
     command: ApplicationCommandInteraction,
     movies: str = commands.Param(
         name="movies", description="Insert movies titles. Ex: The 100, Dahmer"
-        ),
+    ),
     poll_time: commands.Range[10, 300] = commands.Param(
         name="poll_time", description="Insert a number between 10 and 300."
     ),
@@ -250,7 +268,7 @@ async def suggestion(command, movie: str) -> Message:
     )
 
     try:
-        film: dict[str, str] = wrapper.movie_wrapper(
+        film: dict[str, str] = movie_wrapper(
             normalize("NFD", movie).encode("ascii", "ignore").decode("utf8")
         )
     except HTTPError:
@@ -265,9 +283,10 @@ async def suggestion(command, movie: str) -> Message:
     )
     embed_movie.set_thumbnail(url=film["poster"])
     embed_movie.description = film["description"]
+    embed_movie.url = film["imdb_url"]
     embed_movie.set_footer(
         text=(
-            "Genres: {}\nDate: {}\nRating: {}/10 \U0001f31f"
+            "Genres: {}\nYear: {}\nRating: {}/10 \U0001f31f"
             "\nSuggested by: {}"
         ).format(
             " | ".join(film["genres"]),
@@ -291,4 +310,3 @@ async def suggestion_cooldown_error(
             f"{Utils.seconds_to_minutes(error.retry_after)} minutes remaning.",
             delete_after=DELETE_AFTER,
         )
-
