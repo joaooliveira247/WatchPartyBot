@@ -1,6 +1,6 @@
 from collections import Counter
 from unicodedata import normalize
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 
 class Utils:
@@ -27,3 +27,7 @@ class Utils:
             cleaned_phrases.append(Utils.clean_phrase(word))
 
         return cleaned_phrases
+
+    @staticmethod
+    def add_time(time: int) -> datetime:
+        return (datetime.now() + timedelta(hours=time))
